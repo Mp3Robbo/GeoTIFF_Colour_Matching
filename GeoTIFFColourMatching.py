@@ -4,13 +4,13 @@ from sklearn import linear_model
 from datetime import datetime
 
 #Where the processing folder will be made
-rootDirectory = 'D:/Other Tasks/Image Colour Matching/'
+rootDirectory = 'D:/Temp/Image Colour Matching/'
 
 #The image that needs correction
-initialImage = 'D:/Other Tasks/Image Colour Matching/CKingTest.tif'
+initialImage = 'D:/Temp/Image Colour Matching/TintedImage.tif'
 
 #The image that has the desired look
-targetImage = 'D:/Other Tasks/Image Colour Matching/MSandflyAllensRivuletFringe10cm.tif'
+targetImage = 'D:/Temp/Image Colour Matching/TargetImage.tif'
 
 #Amount of correction to apply, 1.0 can be a bit extreme, 0.6 is a nice value to start with
 correctionAmount = 0.5
