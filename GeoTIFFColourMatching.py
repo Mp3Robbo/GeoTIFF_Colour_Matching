@@ -12,7 +12,7 @@ initialImage = 'D:/Temp/Image Colour Matching/TintedImage.tif'
 #The image that has the desired look
 targetImage = 'D:/Temp/Image Colour Matching/TargetImage.tif'
 
-#Amount of correction to apply, 1.0 can be a bit extreme, 0.6 is a nice value to start with
+#Amount of correction to apply, 1.0 can be a bit extreme, 0.5 is a nice value to start with
 correctionAmount = 0.5
 
 #Tif export options
@@ -31,6 +31,7 @@ initImName = initialImage.split("/")
 initImName = initImName[-1]
 initImName = initImName[:len(initImName)-4]
 
+#Make the processing directory
 directory = rootDirectory + initImName + datetime.now().strftime("%Y%m%d%H%M") + '/'
 try:
     os.mkdir(directory)
@@ -38,7 +39,7 @@ except BaseException as e:
     print(e)
     
 
-#Determine extents and pixel sizes for later processing
+#Determine the pixel pixel sizes for later processing
 initRas = QgsRasterLayer(initialImage)
 pixelSizeXInit = initRas.rasterUnitsPerPixelX()
 pixelSizeYInit = initRas.rasterUnitsPerPixelY()
@@ -76,55 +77,32 @@ processing.run("gdal:translate", {'INPUT':initialImage,'TARGET_CRS':None,'NODATA
 
 """
 ##############################################################################
-Grass
-
-
-#Varibility
-processing.run("gdal:translate", {'INPUT':initialImage,'TARGET_CRS':None,'NODATA':-1,'COPY_SUBDATASETS':False,'OPTIONS':compressOptions,
-'EXTRA':'-tr ' + str(4*pixelSizeResamp) + ' ' + str(4*pixelSizeResamp) + ' -r nearest -projwin ' + coordsExpandedInitRas,'DATA_TYPE':0,'OUTPUT':directory + 'InitialResampleAgain.tif'})
-processing.run("grass7:r.neighbors", {'input':directory + 'InitialResampleAgain.tif','selection':None,'method':6,'size':35,'gauss':5,
-'quantile':None,'-c':True,'-a':True,'weight':'','output':directory + 'StdDevOfInitial.tif','nprocs':8,'GRASS_REGION_PARAMETER':None,'GRASS_REGION_CELLSIZE_PARAMETER':0,'GRASS_RASTER_FORMAT_OPT':'','GRASS_RASTER_FORMAT_META':''})
-processing.run("gdal:warpreproject", {'INPUT':directory + 'StdDevOfInitial.tif','TARGET_RESOLUTION':None,'RESAMPLING':3,'OPTIONS':compressOptionsFloat + '|DISCARD_LSB=14','DATA_TYPE':6,'MULTITHREADING':True,
-'EXTRA':'-te ' + coordsInitRas + ' -tr ' + str(pixelSizeXInit) + ' ' + str(pixelSizeYInit),'OUTPUT':directory + 'StdDevOfInitialResamp.tif'})
-
-sDevRas = QgsRasterLayer(directory + 'StdDevOfInitial.tif')
-provider = sDevRas.dataProvider()
-stats = provider.bandStatistics(1, QgsRasterBandStats.All, initRasBounds, 0)
-maximumPixelValSDev = stats.maximumValue
-
-
-processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,'INPUT_D':directory + 'StdDevOfInitialResamp.tif','BAND_D':1,
-'FORMULA':'((float64(B)-((float64(A)+float64(C))/2))**0.9)*((' + str(maximumPixelValSDev) + '- float64(D))**((float64(B)/'+str(maximumPixelVal)+')**0.2))',
-'NO_DATA':0,'RTYPE':5,'OPTIONS':compressOptionsFloat + '|DISCARD_LSB=14','EXTRA':'--overwrite','OUTPUT':directory + 'GrassChance.tif'})
-
-processing.run("gdal:warpreproject", {'INPUT':directory + 'GrassChance.tif','TARGET_RESOLUTION':None,'RESAMPLING':0,'OPTIONS':compressOptions,'DATA_TYPE':3,'MULTITHREADING':True,
-'EXTRA':'-srcnodata None -dstnodata None','OUTPUT':directory + 'GrassChanceClean.tif'})
-
-
-##############################################################################
 Colour
 """
 
+#Relative red
 processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,
         'FORMULA':'float64(A) - ((float64(B)+float64(C))/2)'
         ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat + '|DISCARD_LSB=14','EXTRA':'--overwrite','OUTPUT':directory + 'RelativeRed.tif'})
-        
+     
+#Relative green
 processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,
         'FORMULA':'float64(B) - ((float64(A)+float64(C))/2)'
         ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat + '|DISCARD_LSB=14','EXTRA':'--overwrite','OUTPUT':directory + 'RelativeGreen.tif'})
-        
+
+#Relative blue        
 processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,
         'FORMULA':'float64(C) - ((float64(A)+float64(B))/2)'
         ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat + '|DISCARD_LSB=14','EXTRA':'--overwrite','OUTPUT':directory + 'RelativeBlue.tif'})
 
 
-
+#Bring the bands together
 processing.run("gdal:buildvirtualraster", {'INPUT':[directory + 'RelativeRed.tif',directory + 'RelativeGreen.tif',directory + 'RelativeBlue.tif'],
 'RESOLUTION':2,'SEPARATE':True,'PROJ_DIFFERENCE':True,'ADD_ALPHA':False,'ASSIGN_CRS':None,'RESAMPLING':0,'SRC_NODATA':'','EXTRA':'','OUTPUT':directory + 'RelativeVirtual.vrt'})
 
 #Export this out to a tif
 processing.run("gdal:warpreproject", {'INPUT':directory + 'RelativeVirtual.vrt','SOURCE_CRS':None,'TARGET_CRS':None,'RESAMPLING':0,'NODATA':None,'TARGET_RESOLUTION':None,'OPTIONS':compressOptionsFloat,'DATA_TYPE':0,'TARGET_EXTENT':None,
-'TARGET_EXTENT_CRS':None,'MULTITHREADING':True,'EXTRA':'-co \"PHOTOMETRIC=RGB\" -srcalpha -dstalpha ' + gdalOptions,'OUTPUT':directory + 'RelativeTogether.tif'})
+'TARGET_EXTENT_CRS':None,'MULTITHREADING':True,'EXTRA':'-co \"PHOTOMETRIC=RGB\" ' + gdalOptions,'OUTPUT':directory + 'RelativeTogether.tif'})
 
 """
 ##############################################################################
@@ -217,6 +195,10 @@ print(regrBlue.coef_)
 ##############################################################################
 Prep tasks for multiprocessing (saves a bit of time)
 """
+
+#Because the regression didn't determine what the new values should be, but rather what difference needs to be applied to the original values,
+#the below raster calcs add the difference that has been determined to be applied
+#Despite this, there will still be significant regression to the mean in the output image
 
 def redCalc(task):
     try:
