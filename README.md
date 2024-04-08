@@ -4,9 +4,11 @@ It does this by creating a scatter of points in the area where the tifs overlap,
 
 From this it creates a multiple regression formula for the new RGB pixel values of the tif needing correction
 
+The output image will likely need further minor corrections such as gamma and min/max adjustment
+
 ____________________________________________
 
-I haven't fully tidied up this script, nor thoroughly tested it so let me know if there are any issues
+I have not tested this script in many different scenarios it so let me know if there are any issues
 
 _____________________________________________
 
