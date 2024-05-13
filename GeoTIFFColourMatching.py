@@ -1,5 +1,6 @@
 import numpy
 import time
+from pathlib import Path
 from sklearn import linear_model
 from datetime import datetime
 
@@ -8,21 +9,19 @@ from datetime import datetime
 User options
 """
 
-#Where the processing folder will be made
-rootDirectory =         'C:/Temp/'
-
 #The image that needs correction
-initialImage =          'C:/Temp/TintedImage.tif'
+initialImage =          'D:/Temp/YourImage.tif'
 
 #The image that has the desired look
-targetImage =           'C:/Temp/TargetImage.tif'
+targetImage =           'D:/Temp/YourTargetImage.tif'
 
 #Amount of correction to apply, 1.0 can be a bit extreme, 0.5 is a nice value to start with
-correctionAmount =      0.5
+correctionAmount =      0.4
 
 #Tif export options
 compressOptions =       'COMPRESS=ZSTD|PREDICTOR=1|ZSTD_LEVEL=1|NUM_THREADS=ALL_CPUS|BIGTIFF=IF_SAFER|TILED=YES'
 compressOptionsFloat =  'COMPRESS=ZSTD|PREDICTOR=1|ZSTD_LEVEL=1|NUM_THREADS=ALL_CPUS|BIGTIFF=IF_SAFER|TILED=YES|DISCARD_LSB=14'
+finalCompressOptions =  'COMPRESS=LZW|PREDICTOR=2|NUM_THREADS=ALL_CPUS|BIGTIFF=IF_SAFER|TILED=YES'
 gdalOptions =           '--config GDAL_NUM_THREADS ALL_CPUS -overwrite'
 
 
@@ -31,6 +30,9 @@ gdalOptions =           '--config GDAL_NUM_THREADS ALL_CPUS -overwrite'
 ##############################################################################
 Initial prep
 """
+
+#Get the location of the initial image for storage of processing files
+rootDirectory = str(Path(initialImage).parent.absolute()).replace('\\','/') + '/'
 
 #Set up the layer name for the raster calculations
 initImName = initialImage.split("/")
@@ -44,7 +46,6 @@ try:
 except BaseException as e:
     print(e)
     
-
 #Determine the pixel pixel sizes for later processing
 initRas = QgsRasterLayer(initialImage)
 pixelSizeXInit = initRas.rasterUnitsPerPixelX()
@@ -106,7 +107,6 @@ def relativeBlueCalc(task):
             ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'RelativeBlue.tif'})
 
 
-
 """
 ##############################################################################
 Run the tasks in parallel and wait for them to finish
@@ -115,14 +115,12 @@ Run the tasks in parallel and wait for them to finish
 #Start up the tasks
 initialResamplingTask = QgsTask.fromFunction('initialResampling', initialResampling)
 QgsApplication.taskManager().addTask(initialResamplingTask)
-
 relativeRedTask = QgsTask.fromFunction('relativeRedCalc', relativeRedCalc)
 QgsApplication.taskManager().addTask(relativeRedTask)
 relativeGreenTask = QgsTask.fromFunction('relativeGreenCalc', relativeGreenCalc)
 QgsApplication.taskManager().addTask(relativeGreenTask)
 relativeBlueTask = QgsTask.fromFunction('relativeBlueCalc', relativeBlueCalc)
 QgsApplication.taskManager().addTask(relativeBlueTask)
-
 
 #Wait til done
 try:
@@ -148,7 +146,6 @@ except BaseException as e:
 Joining the relative colour bands together
 """
 
-
 #Bring the bands together
 processing.run("gdal:buildvirtualraster", {'INPUT':[directory + 'RelativeRed.tif',directory + 'RelativeGreen.tif',directory + 'RelativeBlue.tif'],
 'RESOLUTION':2,'SEPARATE':True,'PROJ_DIFFERENCE':True,'ADD_ALPHA':False,'ASSIGN_CRS':None,'RESAMPLING':0,'SRC_NODATA':'','EXTRA':'','OUTPUT':directory + 'RelativeVirtual.vrt'})
@@ -157,11 +154,15 @@ processing.run("gdal:buildvirtualraster", {'INPUT':[directory + 'RelativeRed.tif
 processing.run("gdal:warpreproject", {'INPUT':directory + 'RelativeVirtual.vrt','SOURCE_CRS':None,'TARGET_CRS':None,'RESAMPLING':0,'NODATA':None,'TARGET_RESOLUTION':None,'OPTIONS':compressOptionsFloat,'DATA_TYPE':0,'TARGET_EXTENT':None,
 'TARGET_EXTENT_CRS':None,'MULTITHREADING':True,'EXTRA':'-co \"PHOTOMETRIC=RGB\" ' + gdalOptions,'OUTPUT':directory + 'RelativeTogether.tif'})
 
+#Save space as we're going
+os.remove(directory + 'RelativeRed.tif')
+os.remove(directory + 'RelativeGreen.tif')
+os.remove(directory + 'RelativeBlue.tif')
+
 """
 ##############################################################################
 Image prep and sampling
 """
-
 
 #Get the extent of the target raster
 processing.run("gdal:translate", {'INPUT':targetImage,'TARGET_CRS':None,'NODATA':None,'COPY_SUBDATASETS':False,'OPTIONS':compressOptions,'EXTRA':'-b 4 -scale_1 128 255 -1000 1255','DATA_TYPE':0,'OUTPUT':directory + 'TargetAlpha.tif'})
@@ -207,7 +208,6 @@ initialBlue = [item[8] for item in l]
 initRelRed = [item[10] for item in l]
 initRelGreen = [item[11] for item in l]
 initRelBlue = [item[12] for item in l]
-
 
 #Determine the residual between the initial and the target raster, as a way of trend removal
 residualRed = [b - a for a, b in zip(initialRed, targetRed)]
@@ -320,7 +320,9 @@ try:
     blueTask.waitForFinished(timeout = 3000000)
 except BaseException as e:
     print(e)  
-
+    
+#Save space as we're going
+os.remove(directory + 'RelativeTogether.tif')
 
 """
 ##############################################################################
@@ -335,8 +337,8 @@ processing.run("gdal:buildvirtualraster", {'INPUT':[directory + 'RedCalced.tif',
 processing.run("native:dissolve", {'INPUT':directory + 'InitialAlphaExtentFixFilt.gpkg','FIELD':[],'OUTPUT':directory + 'InitialAlphaExtentFixFiltDissolve.gpkg'})
 
 #Make random points in the whole extent of the input image
-processing.run("native:randompointsinpolygons", {'INPUT':directory + 'InitialAlphaExtentFixFiltDissolve.gpkg','POINTS_NUMBER':6000,'MIN_DISTANCE':0,
-'MIN_DISTANCE_GLOBAL':0,'MAX_TRIES_PER_POINT':10,'SEED':None,'INCLUDE_POLYGON_ATTRIBUTES':False,'OUTPUT':directory + 'RandomPointsFull.gpkg'})
+processing.run("qgis:randompointsinsidepolygons", {'INPUT':directory + 'InitialAlphaExtentFixFiltDissolve.gpkg','STRATEGY':0,'VALUE':6000,'MIN_DISTANCE':None,
+'OUTPUT':directory + 'RandomPointsFull.gpkg'})
 
 #Find the rgb values so far
 processing.run("native:rastersampling", {'INPUT':directory + 'RandomPointsFull.gpkg','RASTERCOPY':directory + 'CalcedBandsTogether.vrt',
@@ -362,24 +364,57 @@ totalMax = max(maxRed,maxGreen,maxBlue)
 totalMin = min(minRed,minGreen,minBlue)
 
 #Apply the stretch
-processing.run("gdal:rastercalculator", {'INPUT_A':directory + 'RedCalced.tif','BAND_A':1,
-        'FORMULA':'(A - ' + str(totalMin) + ') * ' + str(255/(totalMax-totalMin))
-        ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'RedScaled.tif'})
-        
-processing.run("gdal:rastercalculator", {'INPUT_A':directory + 'GreenCalced.tif','BAND_A':1,
-        'FORMULA':'(A - ' + str(totalMin) + ') * ' + str(255/(totalMax-totalMin))
-        ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'GreenScaled.tif'})
-        
-processing.run("gdal:rastercalculator", {'INPUT_A':directory + 'BlueCalced.tif','BAND_A':1,
-        'FORMULA':'(A - ' + str(totalMin) + ') * ' + str(255/(totalMax-totalMin))
-        ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'BlueScaled.tif'})
+def redScaled(task):
+    processing.run("gdal:rastercalculator", {'INPUT_A':directory + 'RedCalced.tif','BAND_A':1,
+            'FORMULA':'(A - ' + str(totalMin) + ') * ' + str(255/(totalMax-totalMin))
+            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'RedScaled.tif'})
 
+def greenScaled(task): 
+    processing.run("gdal:rastercalculator", {'INPUT_A':directory + 'GreenCalced.tif','BAND_A':1,
+            'FORMULA':'(A - ' + str(totalMin) + ') * ' + str(255/(totalMax-totalMin))
+            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'GreenScaled.tif'})
 
+def blueScaled(task):  
+    processing.run("gdal:rastercalculator", {'INPUT_A':directory + 'BlueCalced.tif','BAND_A':1,
+            'FORMULA':'(A - ' + str(totalMin) + ') * ' + str(255/(totalMax-totalMin))
+            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'BlueScaled.tif'})
+
+"""
+##############################################################################
+Run the tasks in parallel and wait for them to finish
+"""
+
+#Start up the tasks
+redScaledTask = QgsTask.fromFunction('RedScaled', redScaled)
+QgsApplication.taskManager().addTask(redScaledTask)
+greenScaledTask = QgsTask.fromFunction('GreenScaled', greenScaled)
+QgsApplication.taskManager().addTask(greenScaledTask)
+blueScaledTask = QgsTask.fromFunction('BlueScaled', blueScaled)
+QgsApplication.taskManager().addTask(blueScaledTask)
+
+#Wait til done
+try:
+    redScaledTask.waitForFinished(timeout = 3000000)
+except BaseException as e:
+    print(e)
+try:
+    greenScaledTask.waitForFinished(timeout = 3000000)
+except BaseException as e:
+    print(e)
+try:
+    blueScaledTask.waitForFinished(timeout = 3000000)
+except BaseException as e:
+    print(e)
+
+#Save space as we're going
+os.remove(directory + 'RedCalced.tif')
+os.remove(directory + 'GreenCalced.tif')
+os.remove(directory + 'BlueCalced.tif')
+    
 """
 ##############################################################################
 Final bringing together of bands
 """
-
 
 #Grab the alpha band of the initial image ready for the vrt
 processing.run("gdal:translate", {'INPUT':initialImage,'TARGET_CRS':None,'NODATA':None,'COPY_SUBDATASETS':False,'OPTIONS':compressOptionsFloat,'EXTRA':'-b 4','DATA_TYPE':6,'OUTPUT':directory + 'AlphaBand.tif'})
@@ -389,14 +424,14 @@ processing.run("gdal:buildvirtualraster", {'INPUT':[directory + 'RedScaled.tif',
 'RESOLUTION':2,'SEPARATE':True,'PROJ_DIFFERENCE':True,'ADD_ALPHA':False,'ASSIGN_CRS':None,'RESAMPLING':0,'SRC_NODATA':'','EXTRA':'','OUTPUT':directory + 'Band123A.vrt'})
 
 #Export this out to a tif
-processing.run("gdal:warpreproject", {'INPUT':directory + 'Band123A.vrt','SOURCE_CRS':None,'TARGET_CRS':None,'RESAMPLING':0,'NODATA':None,'TARGET_RESOLUTION':None,'OPTIONS':compressOptions,'DATA_TYPE':1,'TARGET_EXTENT':None,
+processing.run("gdal:warpreproject", {'INPUT':directory + 'Band123A.vrt','SOURCE_CRS':None,'TARGET_CRS':None,'RESAMPLING':0,'NODATA':None,'TARGET_RESOLUTION':None,'OPTIONS':finalCompressOptions,'DATA_TYPE':1,'TARGET_EXTENT':None,
 'TARGET_EXTENT_CRS':None,'MULTITHREADING':True,'EXTRA':'-co \"PHOTOMETRIC=RGB\" -srcalpha -dstalpha ' + gdalOptions,'OUTPUT':directory + initImName + 'Corrected.tif'})
 
 #Build pyramids to view the final image more easily
 processing.run("gdal:overviews", {'INPUT':directory + initImName + 'Corrected.tif','CLEAN':False,'LEVELS':'','RESAMPLING':0,'FORMAT':1,'EXTRA':'--config COMPRESS_OVERVIEW JPEG'})
 
 #Bring in the final product
-layer1 = iface.addRasterLayer(directory + initImName + 'Corrected.tif', initImName + 'Corrected' , '')
+finalLayer = iface.addRasterLayer(directory + initImName + 'Corrected.tif', initImName + 'Corrected' , '')
 #From here you may need to manually apply per-band min/max stretches, saturation adjustments and tinting to get it closer to the target look
 
 
@@ -405,7 +440,7 @@ layer1 = iface.addRasterLayer(directory + initImName + 'Corrected.tif', initImNa
 Bring the layer into the project
 """
 
-provider=layer1.dataProvider()
+provider=finalLayer.dataProvider()
 statsRed = provider.cumulativeCut(1,0.001,0.999,sampleSize=1000) #adjust these values depending on the stretch you want
 statsGreen = provider.cumulativeCut(2,0.001,0.999,sampleSize=1000)
 statsBlue = provider.cumulativeCut(3,0.001,0.999,sampleSize=1000)
@@ -419,7 +454,7 @@ except:
     print('')
 minimum = min(statsRed[0],statsGreen[0],statsBlue[0])#find the lowest val
 maximum = max(statsRed[1],statsGreen[1],statsBlue[1])#find the highest val
-renderer=layer1.renderer()
+renderer=finalLayer.renderer()
 myType = renderer.dataType(1)
 myEnhancement = QgsContrastEnhancement(myType)
 Renderer = QgsMultiBandColorRenderer(provider,1,1,1) 
@@ -427,11 +462,11 @@ contrast_enhancement = QgsContrastEnhancement.StretchToMinimumMaximum
 myEnhancement.setContrastEnhancementAlgorithm(contrast_enhancement,True)
 myEnhancement.setMinimumValue(minimum)#where the minimum value goes in
 myEnhancement.setMaximumValue(maximum)
-layer1.setRenderer(Renderer)
-layer1.renderer().setRedBand(1)#band 1 is red
-layer1.renderer().setGreenBand(2)
-layer1.renderer().setBlueBand(3)
-layer1.renderer().setRedContrastEnhancement(myEnhancement)#the same contrast enhancement is applied to all
-layer1.renderer().setGreenContrastEnhancement(myEnhancement)
-layer1.renderer().setBlueContrastEnhancement(myEnhancement)
-layer1.triggerRepaint() #refresh
+finalLayer.setRenderer(Renderer)
+finalLayer.renderer().setRedBand(1)#band 1 is red
+finalLayer.renderer().setGreenBand(2)
+finalLayer.renderer().setBlueBand(3)
+finalLayer.renderer().setRedContrastEnhancement(myEnhancement)#the same contrast enhancement is applied to all
+finalLayer.renderer().setGreenContrastEnhancement(myEnhancement)
+finalLayer.renderer().setBlueContrastEnhancement(myEnhancement)
+finalLayer.triggerRepaint() #refresh
