@@ -16,7 +16,7 @@ initialImage =          'D:/Temp/YourImage.tif'
 targetImage =           'D:/Temp/YourTargetImage.tif'
 
 #Amount of correction to apply, 1.0 can be a bit extreme, 0.5 is a nice value to start with
-correctionAmount =      0.4
+correctionAmount =      0.5
 
 #Tif export options
 compressOptions =       'COMPRESS=ZSTD|PREDICTOR=1|ZSTD_LEVEL=1|NUM_THREADS=ALL_CPUS|BIGTIFF=IF_SAFER|TILED=YES'
@@ -322,7 +322,10 @@ except BaseException as e:
     print(e)  
     
 #Save space as we're going
-os.remove(directory + 'RelativeTogether.tif')
+try:
+    os.remove(directory + 'RelativeTogether.tif')
+except BaseException as e:
+    print(e)
 
 """
 ##############################################################################
@@ -407,9 +410,12 @@ except BaseException as e:
     print(e)
 
 #Save space as we're going
-os.remove(directory + 'RedCalced.tif')
-os.remove(directory + 'GreenCalced.tif')
-os.remove(directory + 'BlueCalced.tif')
+try:
+    os.remove(directory + 'RedCalced.tif')
+    os.remove(directory + 'GreenCalced.tif')
+    os.remove(directory + 'BlueCalced.tif')
+except BaseException as e:
+    print(e)
     
 """
 ##############################################################################
