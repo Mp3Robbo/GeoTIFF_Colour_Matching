@@ -10,10 +10,10 @@ User options
 """
 
 #The image that needs correction
-initialImage =          'D:/Temp/YourImage.tif'
+initialImage =          'C:/Temp/YourImage.tif'
 
 #The image that has the desired look
-targetImage =           'D:/Temp/YourTargetImage.tif'
+targetImage =           'C:/Temp/YourTargetImage.tif'
 
 #Amount of correction to apply, 1.0 can be a bit extreme, 0.5 is a nice value to start with
 correctionAmount =      0.5
@@ -46,7 +46,7 @@ try:
 except BaseException as e:
     print(e)
     
-#Determine the pixel pixel sizes for later processing
+#Determine the pixel sizes for later processing
 initRas = QgsRasterLayer(initialImage)
 pixelSizeXInit = initRas.rasterUnitsPerPixelX()
 pixelSizeYInit = initRas.rasterUnitsPerPixelY()
@@ -89,7 +89,7 @@ Relative colour
 """
 
 def relativeRedCalc(task):
-    #Relative red
+    #Relative value of red versus green & blue
     processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,
             'FORMULA':'float64(A) - ((float64(B)+float64(C))/2)'
             ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'RelativeRed.tif'})
@@ -446,6 +446,8 @@ finalLayer = iface.addRasterLayer(directory + initImName + 'Corrected.tif', init
 Bring the layer into the project
 """
 
+#This brings the final tif into the QGIS project for viewing
+#It may not have its alpha layer set correctly for viewing...
 provider=finalLayer.dataProvider()
 statsRed = provider.cumulativeCut(1,0.001,0.999,sampleSize=1000) #adjust these values depending on the stretch you want
 statsGreen = provider.cumulativeCut(2,0.001,0.999,sampleSize=1000)
