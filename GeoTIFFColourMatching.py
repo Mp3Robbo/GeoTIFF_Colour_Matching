@@ -22,7 +22,7 @@ correctionAmount =      0.5
 compressOptions =       'COMPRESS=ZSTD|PREDICTOR=1|ZSTD_LEVEL=1|NUM_THREADS=ALL_CPUS|BIGTIFF=IF_SAFER|TILED=YES'
 compressOptionsFloat =  'COMPRESS=ZSTD|PREDICTOR=1|ZSTD_LEVEL=1|NUM_THREADS=ALL_CPUS|BIGTIFF=IF_SAFER|TILED=YES|DISCARD_LSB=14'
 finalCompressOptions =  'COMPRESS=LZW|PREDICTOR=2|NUM_THREADS=ALL_CPUS|BIGTIFF=IF_SAFER|TILED=YES'
-gdalOptions =           '--config GDAL_NUM_THREADS ALL_CPUS -overwrite'
+gdalOptions =           ''
 
 
 """
@@ -92,19 +92,19 @@ def relativeRedCalc(task):
     #Relative value of red versus green & blue
     processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,
             'FORMULA':'float64(A) - ((float64(B)+float64(C))/2)'
-            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'RelativeRed.tif'})
+            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'','OUTPUT':directory + 'RelativeRed.tif'})
 
 def relativeGreenCalc(task):     
     #Relative green
     processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,
             'FORMULA':'float64(B) - ((float64(A)+float64(C))/2)'
-            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'RelativeGreen.tif'})
+            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'','OUTPUT':directory + 'RelativeGreen.tif'})
             
 def relativeBlueCalc(task):
     #Relative blue        
     processing.run("gdal:rastercalculator", {'INPUT_A':initialImage,'BAND_A':1,'INPUT_B':initialImage,'BAND_B':2,'INPUT_C':initialImage,'BAND_C':3,
             'FORMULA':'float64(C) - ((float64(A)+float64(B))/2)'
-            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'--overwrite','OUTPUT':directory + 'RelativeBlue.tif'})
+            ,'NO_DATA':None,'RTYPE':5,'OPTIONS':compressOptionsFloat,'EXTRA':'','OUTPUT':directory + 'RelativeBlue.tif'})
 
 
 """
@@ -152,7 +152,7 @@ processing.run("gdal:buildvirtualraster", {'INPUT':[directory + 'RelativeRed.tif
 
 #Export this out to a tif
 processing.run("gdal:warpreproject", {'INPUT':directory + 'RelativeVirtual.vrt','SOURCE_CRS':None,'TARGET_CRS':None,'RESAMPLING':0,'NODATA':None,'TARGET_RESOLUTION':None,'OPTIONS':compressOptionsFloat,'DATA_TYPE':0,'TARGET_EXTENT':None,
-'TARGET_EXTENT_CRS':None,'MULTITHREADING':True,'EXTRA':'-co \"PHOTOMETRIC=RGB\" ' + gdalOptions,'OUTPUT':directory + 'RelativeTogether.tif'})
+'TARGET_EXTENT_CRS':None,'MULTITHREADING':True,'EXTRA':'-co PHOTOMETRIC=RGB ' + gdalOptions,'OUTPUT':directory + 'RelativeTogether.tif'})
 
 #Save space as we're going
 os.remove(directory + 'RelativeRed.tif')
